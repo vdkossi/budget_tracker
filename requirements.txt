@@ -1,0 +1,9 @@
+# Budget Tracker Dependencies
+# ============================
+# Run: pip install -r requirements.txt
+
+streamlit>=1.20.0      # Web framework for our app UI
+plotly>=5.0.0          # Interactive charts and graphs
+pandas>=1.3.0          # Data manipulation (tables, calculations)
+python-dateutil        # Date utilities
+
