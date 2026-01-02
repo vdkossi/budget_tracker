@@ -194,7 +194,6 @@ def format_currency(amount):
 def show_dashboard():
     """Display the main dashboard with overview stats."""
     st.title("📊 Dashboard")
-    st.markdown("### Your Financial Overview")
     
     # Check if we have users first
     users = db.get_all_users()
@@ -205,8 +204,6 @@ def show_dashboard():
     # Date selection for the month to view
     col1, col2 = st.columns([2, 1])
     with col1:
-        # PYTHON CONCEPT: datetime
-        # We use datetime to work with dates and times
         today = date.today()
         selected_month = st.date_input(
             "Select Month",
@@ -216,11 +213,14 @@ def show_dashboard():
     
     year = selected_month.year
     month = selected_month.month
+    month_name = selected_month.strftime("%B %Y")
+    
+    st.markdown(f"### 📅 {month_name} Overview")
     
     # Get monthly summary
     summary = db.get_monthly_summary(year, month)
     
-    # Calculate totals
+    # Calculate totals by user and type
     total_expenses = 0
     total_income = 0
     expenses_by_user = {}
@@ -232,134 +232,233 @@ def show_dashboard():
         
         if row["transaction_type"] == "expense":
             total_expenses += amount
-            expenses_by_user[user_name] = amount
+            expenses_by_user[user_name] = expenses_by_user.get(user_name, 0) + amount
         elif row["transaction_type"] == "income":
             total_income += amount
-            income_by_user[user_name] = amount
+            income_by_user[user_name] = income_by_user.get(user_name, 0) + amount
     
     net = total_income - total_expenses
+    savings_rate = (net / total_income * 100) if total_income > 0 else 0
     
-    # Display main metrics
+    # ==========================================================================
+    # SECTION 1: HOUSEHOLD SUMMARY (Top Cards)
+    # ==========================================================================
     st.markdown("---")
     
-    # STREAMLIT CONCEPT: Columns
-    # st.columns() creates side-by-side containers
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
     
     with metric_col1:
         st.metric(
-            label="💰 Total Income",
+            label="💵 Total Income",
             value=format_currency(total_income),
+            help="All income received this month"
         )
     
     with metric_col2:
         st.metric(
             label="💸 Total Expenses",
             value=format_currency(total_expenses),
+            help="All expenses this month (not reduced by income)"
         )
     
     with metric_col3:
+        delta_color = "normal" if net >= 0 else "inverse"
         st.metric(
-            label="📈 Net",
-            value=format_currency(net),
-            delta=f"{'Surplus' if net >= 0 else 'Deficit'}"
+            label="📊 Net (Income - Expenses)",
+            value=format_currency(abs(net)),
+            delta=f"{'✅ Surplus' if net >= 0 else '⚠️ Deficit'}",
+            delta_color=delta_color
         )
     
     with metric_col4:
-        savings_rate = (net / total_income * 100) if total_income > 0 else 0
         st.metric(
             label="🎯 Savings Rate",
             value=f"{savings_rate:.1f}%",
+            help="Percentage of income saved"
         )
     
+    # ==========================================================================
+    # SECTION 2: INCOME vs EXPENSES CHART
+    # ==========================================================================
     st.markdown("---")
+    st.markdown("### 📈 Income vs Expenses Comparison")
     
-    # Spending by person
-    st.markdown("### 👥 Spending by Person")
+    # Create comparison bar chart
+    comparison_data = pd.DataFrame({
+        "Category": ["Income", "Expenses"],
+        "Amount": [total_income, total_expenses],
+        "Color": ["#2E7D32", "#C62828"]  # Green for income, Red for expenses
+    })
     
-    if expenses_by_user:
-        person_cols = st.columns(len(expenses_by_user))
-        for idx, (name, amount) in enumerate(expenses_by_user.items()):
-            with person_cols[idx]:
-                st.metric(
-                    label=f"🧑 {name}",
-                    value=format_currency(amount),
-                    delta=f"{(amount/total_expenses*100):.1f}% of total" if total_expenses > 0 else "0%"
-                )
-    else:
-        st.info("No expenses recorded for this month yet.")
+    fig_compare = px.bar(
+        comparison_data,
+        x="Category",
+        y="Amount",
+        color="Category",
+        color_discrete_map={"Income": "#2E7D32", "Expenses": "#C62828"},
+        text="Amount"
+    )
+    fig_compare.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+    fig_compare.update_layout(
+        showlegend=False,
+        margin=dict(t=20, b=20, l=20, r=20),
+        yaxis_title="Amount ($)",
+        xaxis_title=""
+    )
+    st.plotly_chart(fig_compare, use_container_width=True)
     
+    # ==========================================================================
+    # SECTION 3: BREAKDOWN BY PERSON
+    # ==========================================================================
     st.markdown("---")
+    st.markdown("### 👥 Breakdown by Person")
     
-    # Charts section
-    chart_col1, chart_col2 = st.columns(2)
+    # Get all user names
+    all_user_names = list(set(list(expenses_by_user.keys()) + list(income_by_user.keys())))
     
-    with chart_col1:
-        st.markdown("### 📊 Expenses by Category")
-        category_data = []
-        for row in summary["by_category"]:
-            if row["transaction_type"] == "expense":
-                category_data.append({
-                    "Category": row["category_name"],
-                    "Amount": row["total"]
-                })
+    if all_user_names:
+        # Create tabs for each view
+        tab1, tab2 = st.tabs(["📊 Side by Side", "📋 Details"])
         
-        if category_data:
-            df = pd.DataFrame(category_data)
-            fig = px.pie(
-                df, 
-                values="Amount", 
-                names="Category",
-                hole=0.4,  # Makes it a donut chart
-                color_discrete_sequence=px.colors.qualitative.Set2
-            )
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No expense data to display.")
-    
-    with chart_col2:
-        st.markdown("### 👤 Spending by Person")
-        if expenses_by_user:
-            df = pd.DataFrame([
-                {"Person": name, "Amount": amount} 
-                for name, amount in expenses_by_user.items()
-            ])
-            fig = px.bar(
-                df,
+        with tab1:
+            # Grouped bar chart: Income vs Expenses by person
+            person_data = []
+            for name in all_user_names:
+                person_data.append({"Person": name, "Type": "Income", "Amount": income_by_user.get(name, 0)})
+                person_data.append({"Person": name, "Type": "Expenses", "Amount": expenses_by_user.get(name, 0)})
+            
+            df_person = pd.DataFrame(person_data)
+            
+            fig_person = px.bar(
+                df_person,
                 x="Person",
                 y="Amount",
-                color="Person",
-                color_discrete_sequence=px.colors.qualitative.Pastel
+                color="Type",
+                barmode="group",
+                color_discrete_map={"Income": "#2E7D32", "Expenses": "#C62828"},
+                text="Amount"
             )
-            fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No expense data to display.")
+            fig_person.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+            fig_person.update_layout(
+                margin=dict(t=20, b=20, l=20, r=20),
+                yaxis_title="Amount ($)",
+                xaxis_title="",
+                legend_title="Type"
+            )
+            st.plotly_chart(fig_person, use_container_width=True)
+        
+        with tab2:
+            # Detailed metrics per person
+            person_cols = st.columns(len(all_user_names))
+            for idx, name in enumerate(all_user_names):
+                with person_cols[idx]:
+                    inc = income_by_user.get(name, 0)
+                    exp = expenses_by_user.get(name, 0)
+                    person_net = inc - exp
+                    
+                    st.markdown(f"#### 🧑 {name}")
+                    st.metric("Income", format_currency(inc))
+                    st.metric("Expenses", format_currency(exp))
+                    st.metric(
+                        "Net", 
+                        format_currency(abs(person_net)),
+                        delta=f"{'Surplus' if person_net >= 0 else 'Deficit'}"
+                    )
+                    if total_expenses > 0:
+                        st.caption(f"📊 {(exp/total_expenses*100):.1f}% of household expenses")
+    else:
+        st.info("No data for this month yet.")
     
-    # Recent transactions
+    # ==========================================================================
+    # SECTION 4: EXPENSE BREAKDOWN BY CATEGORY
+    # ==========================================================================
+    st.markdown("---")
+    st.markdown("### 🏷️ Expense Categories")
+    
+    category_data = []
+    for row in summary["by_category"]:
+        if row["transaction_type"] == "expense":
+            category_data.append({
+                "Category": row["category_name"],
+                "Amount": row["total"]
+            })
+    
+    if category_data:
+        chart_col1, chart_col2 = st.columns(2)
+        
+        with chart_col1:
+            # Donut chart
+            df_cat = pd.DataFrame(category_data)
+            df_cat = df_cat.sort_values("Amount", ascending=False)
+            
+            fig_pie = px.pie(
+                df_cat,
+                values="Amount",
+                names="Category",
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Set2
+            )
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            fig_pie.update_layout(
+                showlegend=False,
+                margin=dict(t=20, b=20, l=20, r=20)
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+        
+        with chart_col2:
+            # Horizontal bar chart (top categories)
+            fig_bar = px.bar(
+                df_cat.head(10),  # Top 10 categories
+                y="Category",
+                x="Amount",
+                orientation="h",
+                color="Amount",
+                color_continuous_scale="Reds",
+                text="Amount"
+            )
+            fig_bar.update_traces(texttemplate='$%{text:,.0f}', textposition='outside')
+            fig_bar.update_layout(
+                showlegend=False,
+                margin=dict(t=20, b=20, l=20, r=20),
+                yaxis={'categoryorder': 'total ascending'},
+                xaxis_title="Amount ($)",
+                yaxis_title="",
+                coloraxis_showscale=False
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+    else:
+        st.info("No expense data to display.")
+    
+    # ==========================================================================
+    # SECTION 5: RECENT TRANSACTIONS (Color-coded)
+    # ==========================================================================
     st.markdown("---")
     st.markdown("### 📝 Recent Transactions")
     
-    transactions = db.get_transactions()[:10]  # Last 10
+    transactions = db.get_transactions()[:15]  # Last 15
     
     if transactions:
-        # PYTHON CONCEPT: List Comprehension
-        # A compact way to create lists from other lists
-        trans_data = [{
-            "Date": t["transaction_date"],
-            "Person": t["user_name"],
-            "Category": t["category_name"],
-            "Type": t["transaction_type"].title(),
-            "Amount": format_currency(t["amount"]),
-            "Description": t["description"] or "-"
-        } for t in transactions]
+        # Show with visual distinction between income and expense
+        for t in transactions:
+            is_income = t["transaction_type"] == "income"
+            icon = "💵" if is_income else "💸"
+            color = "green" if is_income else "red"
+            sign = "+" if is_income else "-"
+            
+            col1, col2, col3, col4 = st.columns([2, 2, 3, 2])
+            with col1:
+                st.markdown(f"**{t['transaction_date']}**")
+            with col2:
+                st.markdown(f"🧑 {t['user_name']}")
+            with col3:
+                st.markdown(f"{t['category_name']}")
+                if t['description']:
+                    st.caption(t['description'])
+            with col4:
+                st.markdown(f"{icon} :{color}[**{sign}{format_currency(t['amount'])}**]")
         
-        # PANDAS CONCEPT: DataFrame
-        # DataFrames are like spreadsheets in Python
-        df = pd.DataFrame(trans_data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.markdown("---")
+        st.caption("💵 = Income | 💸 = Expense")
     else:
         st.info("No transactions yet. Start by adding an expense or income!")
 
@@ -379,10 +478,55 @@ def show_add_expense():
         st.warning("⚠️ Please add users first in Settings!")
         return
     
-    # STREAMLIT CONCEPT: Forms
-    # Forms group inputs together and only submit when button is clicked
-    # This prevents the page from rerunning on every keystroke!
+    # ==========================================================================
+    # DATE SELECTION (Outside form for validation)
+    # ==========================================================================
+    st.markdown("### 📅 Step 1: Select Date")
+    st.markdown("*Accurate dates are important for month-to-month comparisons!*")
     
+    date_col1, date_col2 = st.columns([1, 2])
+    
+    with date_col1:
+        # Default to None to force selection
+        expense_date = st.date_input(
+            "When did this expense occur?",
+            value=None,
+            key="expense_date_input",
+            help="Select the actual date of the expense"
+        )
+    
+    with date_col2:
+        if expense_date is None:
+            st.warning("⚠️ Please select a date to continue")
+            date_confirmed = False
+        elif expense_date == date.today():
+            st.info("📅 You selected **today's date**. Is this correct?")
+            date_confirmed = st.checkbox(
+                "Yes, this expense is from today",
+                key="expense_date_confirm"
+            )
+            if not date_confirmed:
+                st.caption("Check the box to confirm, or select a different date")
+        else:
+            # Past or future date - show what they selected
+            days_diff = (date.today() - expense_date).days
+            if days_diff > 0:
+                st.success(f"✅ Date: **{expense_date.strftime('%B %d, %Y')}** ({days_diff} days ago)")
+            else:
+                st.success(f"✅ Date: **{expense_date.strftime('%B %d, %Y')}** (future date)")
+            date_confirmed = True
+    
+    # Only show form if date is confirmed
+    if not expense_date or (expense_date == date.today() and not date_confirmed):
+        st.info("👆 Please select and confirm the date above to continue")
+        return
+    
+    st.markdown("---")
+    st.markdown("### 💸 Step 2: Enter Expense Details")
+    
+    # ==========================================================================
+    # EXPENSE FORM
+    # ==========================================================================
     with st.form("expense_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
@@ -402,7 +546,8 @@ def show_add_expense():
                 "Category",
                 category_names
             )
-            
+        
+        with col2:
             # Amount
             amount = st.number_input(
                 "Amount ($)",
@@ -411,13 +556,6 @@ def show_add_expense():
                 step=0.01,
                 format="%.2f"
             )
-        
-        with col2:
-            # Date
-            expense_date = st.date_input(
-                "Date",
-                value=date.today()
-            )
             
             # Description
             description = st.text_input(
@@ -425,41 +563,101 @@ def show_add_expense():
                 placeholder="e.g., Weekly groceries at Trader Joe's"
             )
         
+        # Show selected date
+        st.info(f"📅 Recording for: **{expense_date.strftime('%B %d, %Y')}**")
+        
         # Submit button
         submitted = st.form_submit_button("💾 Save Expense", use_container_width=True)
         
         if submitted:
-            # Get IDs from names
-            user_id = next(u["id"] for u in users if u["name"] == selected_user)
-            category_id = next(c["id"] for c in categories if c["name"] == selected_category)
-            
-            # Save to database
-            db.add_transaction(
-                user_id=user_id,
-                category_id=category_id,
-                amount=amount,
-                description=description,
-                transaction_type="expense",
-                transaction_date=expense_date.isoformat()
-            )
-            
-            st.success(f"✅ Expense of {format_currency(amount)} saved for {selected_user}!")
-            st.balloons()  # Fun celebration animation!
+            if amount <= 0.01:
+                st.error("Please enter a valid amount")
+            else:
+                # Get IDs from names
+                user_id = next(u["id"] for u in users if u["name"] == selected_user)
+                category_id = next(c["id"] for c in categories if c["name"] == selected_category)
+                
+                # Save to database
+                db.add_transaction(
+                    user_id=user_id,
+                    category_id=category_id,
+                    amount=amount,
+                    description=description,
+                    transaction_type="expense",
+                    transaction_date=expense_date.isoformat()
+                )
+                
+                st.success(f"✅ Expense of {format_currency(amount)} saved for {selected_user} on {expense_date.strftime('%b %d, %Y')}!")
+                st.balloons()
     
-    # Show recent expenses below the form
+    # Show recent expenses below the form with CRUD operations
     st.markdown("---")
-    st.markdown("### Recent Expenses")
+    st.markdown("### 💸 Recent Expenses")
+    st.caption("Click on any entry to edit or delete it")
     
-    recent = db.get_transactions(transaction_type="expense")[:5]
+    recent = db.get_transactions(transaction_type="expense")[:10]
+    
     if recent:
+        # Calculate total
+        total_recent = sum(t["amount"] for t in recent)
+        st.metric("Total (shown below)", format_currency(total_recent))
+        
+        st.markdown("---")
+        
         for t in recent:
-            st.markdown(
-                f"**{t['transaction_date']}** - {t['user_name']} spent "
-                f"**{format_currency(t['amount'])}** on {t['category_name']}"
-                f"{' - ' + t['description'] if t['description'] else ''}"
-            )
+            with st.expander(
+                f"💸 {t['transaction_date']} | {t['user_name']} | "
+                f"{t['category_name']} | -{format_currency(t['amount'])}"
+            ):
+                if t['description']:
+                    st.markdown(f"**Description:** {t['description']}")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("#### ✏️ Edit")
+                    with st.form(f"edit_expense_{t['id']}"):
+                        # Get fresh user/category lists
+                        all_users = db.get_all_users()
+                        all_categories = db.get_categories_by_type("expense")
+                        
+                        user_names = [u["name"] for u in all_users]
+                        category_names = [c["name"] for c in all_categories]
+                        
+                        # Find current indices
+                        current_user_idx = user_names.index(t['user_name']) if t['user_name'] in user_names else 0
+                        current_cat_idx = category_names.index(t['category_name']) if t['category_name'] in category_names else 0
+                        
+                        new_user = st.selectbox("Person", user_names, index=current_user_idx, key=f"exp_edit_user_{t['id']}")
+                        new_category = st.selectbox("Category", category_names, index=current_cat_idx, key=f"exp_edit_cat_{t['id']}")
+                        new_amount = st.number_input("Amount", value=float(t['amount']), min_value=0.01, key=f"exp_edit_amt_{t['id']}")
+                        new_desc = st.text_input("Description", value=t['description'] or "", key=f"exp_edit_desc_{t['id']}")
+                        new_date = st.date_input("Date", value=date.fromisoformat(t['transaction_date']), key=f"exp_edit_date_{t['id']}")
+                        
+                        if st.form_submit_button("💾 Save Changes"):
+                            new_user_id = next(u["id"] for u in all_users if u["name"] == new_user)
+                            new_cat_id = next(c["id"] for c in all_categories if c["name"] == new_category)
+                            
+                            db.update_transaction(
+                                transaction_id=t['id'],
+                                user_id=new_user_id,
+                                category_id=new_cat_id,
+                                amount=new_amount,
+                                description=new_desc,
+                                transaction_date=new_date.isoformat()
+                            )
+                            st.success("✅ Expense updated!")
+                            st.experimental_rerun()
+                
+                with col2:
+                    st.markdown("#### 🗑️ Delete")
+                    st.warning("This cannot be undone!")
+                    if st.button(f"Delete this expense", key=f"del_expense_{t['id']}"):
+                        db.delete_transaction(t['id'])
+                        st.success("✅ Expense deleted!")
+                        st.experimental_rerun()
     else:
-        st.info("No expenses recorded yet.")
+        st.info("No expenses recorded yet. Add your first expense above!")
 
 
 # =============================================================================
@@ -476,6 +674,55 @@ def show_add_income():
         st.warning("⚠️ Please add users first in Settings!")
         return
     
+    # ==========================================================================
+    # DATE SELECTION (Outside form for validation)
+    # ==========================================================================
+    st.markdown("### 📅 Step 1: Select Date")
+    st.markdown("*Accurate dates are important for month-to-month comparisons!*")
+    
+    date_col1, date_col2 = st.columns([1, 2])
+    
+    with date_col1:
+        # Default to None to force selection
+        income_date = st.date_input(
+            "When was this income received?",
+            value=None,
+            key="income_date_input",
+            help="Select the actual date of the income"
+        )
+    
+    with date_col2:
+        if income_date is None:
+            st.warning("⚠️ Please select a date to continue")
+            date_confirmed = False
+        elif income_date == date.today():
+            st.info("📅 You selected **today's date**. Is this correct?")
+            date_confirmed = st.checkbox(
+                "Yes, this income is from today",
+                key="income_date_confirm"
+            )
+            if not date_confirmed:
+                st.caption("Check the box to confirm, or select a different date")
+        else:
+            # Past or future date - show what they selected
+            days_diff = (date.today() - income_date).days
+            if days_diff > 0:
+                st.success(f"✅ Date: **{income_date.strftime('%B %d, %Y')}** ({days_diff} days ago)")
+            else:
+                st.success(f"✅ Date: **{income_date.strftime('%B %d, %Y')}** (future date)")
+            date_confirmed = True
+    
+    # Only show form if date is confirmed
+    if not income_date or (income_date == date.today() and not date_confirmed):
+        st.info("👆 Please select and confirm the date above to continue")
+        return
+    
+    st.markdown("---")
+    st.markdown("### 💵 Step 2: Enter Income Details")
+    
+    # ==========================================================================
+    # INCOME FORM
+    # ==========================================================================
     with st.form("income_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         
@@ -486,7 +733,8 @@ def show_add_income():
             categories = db.get_categories_by_type("income")
             category_names = [c["name"] for c in categories]
             selected_category = st.selectbox("Category", category_names)
-            
+        
+        with col2:
             amount = st.number_input(
                 "Amount ($)",
                 min_value=0.01,
@@ -494,31 +742,104 @@ def show_add_income():
                 step=0.01,
                 format="%.2f"
             )
-        
-        with col2:
-            income_date = st.date_input("Date", value=date.today())
+            
             description = st.text_input(
                 "Description (optional)",
                 placeholder="e.g., January paycheck"
             )
         
+        # Show selected date
+        st.info(f"📅 Recording for: **{income_date.strftime('%B %d, %Y')}**")
+        
         submitted = st.form_submit_button("💾 Save Income", use_container_width=True)
         
         if submitted:
-            user_id = next(u["id"] for u in users if u["name"] == selected_user)
-            category_id = next(c["id"] for c in categories if c["name"] == selected_category)
-            
-            db.add_transaction(
-                user_id=user_id,
-                category_id=category_id,
-                amount=amount,
-                description=description,
-                transaction_type="income",
-                transaction_date=income_date.isoformat()
-            )
-            
-            st.success(f"✅ Income of {format_currency(amount)} recorded for {selected_user}!")
-            st.balloons()
+            if amount <= 0.01:
+                st.error("Please enter a valid amount")
+            else:
+                user_id = next(u["id"] for u in users if u["name"] == selected_user)
+                category_id = next(c["id"] for c in categories if c["name"] == selected_category)
+                
+                db.add_transaction(
+                    user_id=user_id,
+                    category_id=category_id,
+                    amount=amount,
+                    description=description,
+                    transaction_type="income",
+                    transaction_date=income_date.isoformat()
+                )
+                
+                st.success(f"✅ Income of {format_currency(amount)} recorded for {selected_user} on {income_date.strftime('%b %d, %Y')}!")
+                st.balloons()
+    
+    # Show recent income below the form with CRUD operations
+    st.markdown("---")
+    st.markdown("### 💵 Recent Income")
+    st.caption("Click on any entry to edit or delete it")
+    
+    recent_income = db.get_transactions(transaction_type="income")[:10]
+    
+    if recent_income:
+        # Calculate total
+        total_recent = sum(t["amount"] for t in recent_income)
+        st.metric("Total (shown below)", format_currency(total_recent))
+        
+        st.markdown("---")
+        
+        for t in recent_income:
+            with st.expander(
+                f"💵 {t['transaction_date']} | {t['user_name']} | "
+                f"{t['category_name']} | +{format_currency(t['amount'])}"
+            ):
+                if t['description']:
+                    st.markdown(f"**Description:** {t['description']}")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("#### ✏️ Edit")
+                    with st.form(f"edit_income_{t['id']}"):
+                        # Get fresh user/category lists
+                        all_users = db.get_all_users()
+                        all_categories = db.get_categories_by_type("income")
+                        
+                        user_names = [u["name"] for u in all_users]
+                        category_names = [c["name"] for c in all_categories]
+                        
+                        # Find current indices
+                        current_user_idx = user_names.index(t['user_name']) if t['user_name'] in user_names else 0
+                        current_cat_idx = category_names.index(t['category_name']) if t['category_name'] in category_names else 0
+                        
+                        new_user = st.selectbox("Person", user_names, index=current_user_idx, key=f"inc_edit_user_{t['id']}")
+                        new_category = st.selectbox("Category", category_names, index=current_cat_idx, key=f"inc_edit_cat_{t['id']}")
+                        new_amount = st.number_input("Amount", value=float(t['amount']), min_value=0.01, key=f"inc_edit_amt_{t['id']}")
+                        new_desc = st.text_input("Description", value=t['description'] or "", key=f"inc_edit_desc_{t['id']}")
+                        new_date = st.date_input("Date", value=date.fromisoformat(t['transaction_date']), key=f"inc_edit_date_{t['id']}")
+                        
+                        if st.form_submit_button("💾 Save Changes"):
+                            new_user_id = next(u["id"] for u in all_users if u["name"] == new_user)
+                            new_cat_id = next(c["id"] for c in all_categories if c["name"] == new_category)
+                            
+                            db.update_transaction(
+                                transaction_id=t['id'],
+                                user_id=new_user_id,
+                                category_id=new_cat_id,
+                                amount=new_amount,
+                                description=new_desc,
+                                transaction_date=new_date.isoformat()
+                            )
+                            st.success("✅ Income updated!")
+                            st.experimental_rerun()
+                
+                with col2:
+                    st.markdown("#### 🗑️ Delete")
+                    st.warning("This cannot be undone!")
+                    if st.button(f"Delete this income", key=f"del_income_{t['id']}"):
+                        db.delete_transaction(t['id'])
+                        st.success("✅ Income deleted!")
+                        st.experimental_rerun()
+    else:
+        st.info("No income recorded yet. Add your first income above!")
 
 
 # =============================================================================

@@ -355,7 +355,7 @@ def _seed_default_categories():
     not imported by other files.
     """
     default_categories = [
-        # Expense categories
+        # Expense categories - General
         ("Groceries", "expense"),
         ("Dining Out", "expense"),
         ("Transportation", "expense"),
@@ -363,9 +363,22 @@ def _seed_default_categories():
         ("Entertainment", "expense"),
         ("Shopping", "expense"),
         ("Healthcare", "expense"),
-        ("Personal Care", "expense"),
+        ("Day Care", "expense"),
         ("Subscriptions", "expense"),
         ("Other", "expense"),
+        # Expense categories - Housing
+        ("Home Loan/Mortgage", "expense"),
+        ("HOA Fee", "expense"),
+        ("Property Tax", "expense"),
+        ("Home Maintenance", "expense"),
+        ("Rent", "expense"),
+        ("Car Loan Payment", "expense"),
+        # Expense categories - Insurance
+        ("Car Insurance", "expense"),
+        ("Home Insurance", "expense"),
+        ("Life Insurance", "expense"),
+        ("Health Insurance", "expense"),
+        ("Appliance Warranty", "expense"),
         # Income categories
         ("Salary", "income"),
         ("Side Income", "income"),
