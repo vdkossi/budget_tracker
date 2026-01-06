@@ -278,7 +278,169 @@ def show_dashboard():
         )
     
     # ==========================================================================
-    # SECTION 2: INCOME vs EXPENSES CHART
+    # SECTION 2: MONTH-OVER-MONTH COMPARISON
+    # ==========================================================================
+    st.markdown("---")
+    st.markdown("### 📊 Month-over-Month Expense Trend")
+    st.caption("Are your expenses going down? Let's find out!")
+    
+    # Get monthly comparison data
+    monthly_data = db.get_monthly_comparison(6)  # Last 6 months
+    
+    if len(monthly_data) >= 2:
+        # Get current and previous month data
+        current_month_data = monthly_data[-1] if monthly_data else None
+        previous_month_data = monthly_data[-2] if len(monthly_data) >= 2 else None
+        
+        if current_month_data and previous_month_data:
+            current_expenses = current_month_data["expenses"]
+            previous_expenses = previous_month_data["expenses"]
+            
+            # Calculate change
+            if previous_expenses > 0:
+                expense_change = current_expenses - previous_expenses
+                expense_change_pct = (expense_change / previous_expenses) * 100
+            else:
+                expense_change = current_expenses
+                expense_change_pct = 100 if current_expenses > 0 else 0
+            
+            expenses_down = expense_change < 0
+            
+            # Display comparison cards
+            comp_col1, comp_col2, comp_col3 = st.columns(3)
+            
+            with comp_col1:
+                # Parse month string for display
+                prev_month_display = datetime.strptime(previous_month_data["month"], "%Y-%m").strftime("%B %Y")
+                st.metric(
+                    label=f"📅 {prev_month_display}",
+                    value=format_currency(previous_expenses),
+                    help="Previous month expenses"
+                )
+            
+            with comp_col2:
+                curr_month_display = datetime.strptime(current_month_data["month"], "%Y-%m").strftime("%B %Y")
+                st.metric(
+                    label=f"📅 {curr_month_display}",
+                    value=format_currency(current_expenses),
+                    help="Current month expenses"
+                )
+            
+            with comp_col3:
+                if expenses_down:
+                    st.metric(
+                        label="📉 Change",
+                        value=format_currency(abs(expense_change)),
+                        delta=f"⬇️ {abs(expense_change_pct):.1f}% LESS",
+                        delta_color="normal"
+                    )
+                else:
+                    st.metric(
+                        label="📈 Change",
+                        value=format_currency(abs(expense_change)),
+                        delta=f"⬆️ {abs(expense_change_pct):.1f}% MORE",
+                        delta_color="inverse"
+                    )
+            
+            # Status message
+            if expenses_down:
+                st.success(f"🎉 Great job! You spent **{format_currency(abs(expense_change))}** less than last month ({abs(expense_change_pct):.1f}% decrease)")
+            elif expense_change == 0:
+                st.info("📊 Your expenses are the same as last month")
+            else:
+                st.warning(f"⚠️ Heads up! You spent **{format_currency(expense_change)}** more than last month ({expense_change_pct:.1f}% increase)")
+        
+        # Trend chart - last 6 months
+        if len(monthly_data) >= 2:
+            st.markdown("#### 📈 6-Month Expense Trend")
+            
+            # Prepare data for chart
+            trend_df = pd.DataFrame(monthly_data)
+            trend_df["month_display"] = trend_df["month"].apply(
+                lambda x: datetime.strptime(x, "%Y-%m").strftime("%b '%y")
+            )
+            
+            # Create line chart for expenses
+            fig_trend = go.Figure()
+            
+            # Expense line
+            fig_trend.add_trace(go.Scatter(
+                x=trend_df["month_display"],
+                y=trend_df["expenses"],
+                mode='lines+markers+text',
+                name='Expenses',
+                line=dict(color='#C62828', width=3),
+                marker=dict(size=10),
+                text=[f"${x:,.0f}" for x in trend_df["expenses"]],
+                textposition="top center"
+            ))
+            
+            # Income line (for reference)
+            fig_trend.add_trace(go.Scatter(
+                x=trend_df["month_display"],
+                y=trend_df["income"],
+                mode='lines+markers',
+                name='Income',
+                line=dict(color='#2E7D32', width=2, dash='dash'),
+                marker=dict(size=8)
+            ))
+            
+            # Add trend line for expenses
+            if len(trend_df) >= 3:
+                # Simple linear regression for trend
+                x_vals = list(range(len(trend_df)))
+                y_vals = trend_df["expenses"].tolist()
+                
+                # Calculate trend (simple slope)
+                n = len(x_vals)
+                sum_x = sum(x_vals)
+                sum_y = sum(y_vals)
+                sum_xy = sum(x * y for x, y in zip(x_vals, y_vals))
+                sum_x2 = sum(x ** 2 for x in x_vals)
+                
+                slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x ** 2) if (n * sum_x2 - sum_x ** 2) != 0 else 0
+                intercept = (sum_y - slope * sum_x) / n
+                
+                trend_y = [slope * x + intercept for x in x_vals]
+                
+                trend_color = '#4CAF50' if slope < 0 else '#FF5722'  # Green if going down, orange if up
+                
+                fig_trend.add_trace(go.Scatter(
+                    x=trend_df["month_display"],
+                    y=trend_y,
+                    mode='lines',
+                    name='Trend',
+                    line=dict(color=trend_color, width=2, dash='dot')
+                ))
+            
+            fig_trend.update_layout(
+                margin=dict(t=20, b=20, l=20, r=20),
+                yaxis_title="Amount ($)",
+                xaxis_title="",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                hovermode="x unified"
+            )
+            
+            st.plotly_chart(fig_trend, use_container_width=True)
+            
+            # Show trend interpretation
+            if len(monthly_data) >= 3:
+                first_expense = monthly_data[0]["expenses"]
+                last_expense = monthly_data[-1]["expenses"]
+                overall_change = last_expense - first_expense
+                
+                if first_expense > 0:
+                    overall_pct = (overall_change / first_expense) * 100
+                    
+                    if overall_change < 0:
+                        st.success(f"📉 **Overall trend:** Expenses are **DOWN** {abs(overall_pct):.1f}% over the last {len(monthly_data)} months!")
+                    else:
+                        st.warning(f"📈 **Overall trend:** Expenses are **UP** {overall_pct:.1f}% over the last {len(monthly_data)} months")
+    else:
+        st.info("📊 Need at least 2 months of data to show comparison. Keep tracking your expenses!")
+    
+    # ==========================================================================
+    # SECTION 3: INCOME vs EXPENSES CHART
     # ==========================================================================
     st.markdown("---")
     st.markdown("### 📈 Income vs Expenses Comparison")

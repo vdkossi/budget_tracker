@@ -619,6 +619,110 @@ def get_monthly_summary(year: int, month: int) -> dict:
     }
 
 
+def get_monthly_comparison(num_months: int = 6) -> list:
+    """
+    Get expense and income totals for the last N months.
+    
+    PYTHON CONCEPT: Date Arithmetic
+    -------------------------------
+    We use string manipulation with strftime to get month ranges.
+    This is useful for generating reports over time periods.
+    
+    Args:
+        num_months: Number of months to retrieve (default 6)
+        
+    Returns:
+        List of dicts with monthly totals, sorted oldest to newest
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Get monthly totals for expenses and income
+    cursor.execute("""
+        SELECT 
+            strftime('%Y-%m', t.transaction_date) as month,
+            t.transaction_type,
+            SUM(t.amount) as total,
+            COUNT(*) as transaction_count
+        FROM transactions t
+        WHERE t.transaction_date >= date('now', ?)
+        GROUP BY strftime('%Y-%m', t.transaction_date), t.transaction_type
+        ORDER BY month ASC
+    """, (f'-{num_months} months',))
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    # Organize by month
+    months_data = {}
+    for row in results:
+        month = row["month"]
+        if month not in months_data:
+            months_data[month] = {
+                "month": month,
+                "expenses": 0,
+                "income": 0,
+                "expense_count": 0,
+                "income_count": 0
+            }
+        
+        if row["transaction_type"] == "expense":
+            months_data[month]["expenses"] = row["total"]
+            months_data[month]["expense_count"] = row["transaction_count"]
+        elif row["transaction_type"] == "income":
+            months_data[month]["income"] = row["total"]
+            months_data[month]["income_count"] = row["transaction_count"]
+    
+    # Convert to sorted list
+    return sorted(months_data.values(), key=lambda x: x["month"])
+
+
+def get_category_comparison(num_months: int = 2) -> dict:
+    """
+    Compare spending by category between current and previous month.
+    
+    Returns:
+        Dict with category-level comparison data
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Get current and previous month strings
+    cursor.execute("""
+        SELECT 
+            strftime('%Y-%m', t.transaction_date) as month,
+            c.name as category_name,
+            SUM(t.amount) as total
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        WHERE t.transaction_type = 'expense'
+          AND t.transaction_date >= date('now', '-2 months')
+        GROUP BY strftime('%Y-%m', t.transaction_date), c.name
+        ORDER BY month DESC, total DESC
+    """)
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    # Organize by month then category
+    comparison = {}
+    for row in results:
+        month = row["month"]
+        category = row["category_name"]
+        
+        if category not in comparison:
+            comparison[category] = {"current": 0, "previous": 0}
+        
+        # Determine if this is current or previous month
+        # Results are sorted DESC, so first occurrence is current
+        if comparison[category]["current"] == 0:
+            comparison[category]["current"] = row["total"]
+        else:
+            comparison[category]["previous"] = row["total"]
+    
+    return comparison
+
+
 # =============================================================================
 # DEBT OPERATIONS
 # =============================================================================
