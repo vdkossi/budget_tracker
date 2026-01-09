@@ -1369,19 +1369,38 @@ def show_settings():
     
     if users:
         for user in users:
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.markdown(f"🧑 **{user['name']}**")
-            with col2:
-                with st.expander("🗑️"):
-                    st.caption("User must have no transactions to delete.")
-                    if st.button("Delete", key=f"del_user_{user['id']}"):
-                        try:
-                            db.delete_user(user["id"])
-                            st.success("User deleted!")
-                            st.experimental_rerun()
-                        except ValueError as e:
-                            st.error(str(e))
+            # Use a container to group user elements for easier automation
+            with st.container():
+                # Add hidden marker with user info for automation
+                st.markdown(
+                    f'<div data-user-id="{user["id"]}" data-user-name="{user["name"]}" style="display: none;"></div>',
+                    unsafe_allow_html=True
+                )
+                
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    # User name with data attribute
+                    st.markdown(f"🧑 **{user['name']}**")
+                with col2:
+                    # Delete expander - add data attribute via markdown for automation
+                    st.markdown(
+                        f'<div data-delete-expander-user="{user["name"]}" style="display: none;"></div>',
+                        unsafe_allow_html=True
+                    )
+                    with st.expander("🗑️"):
+                        st.caption("User must have no transactions to delete.")
+                        # Delete button with clear identifier
+                        if st.button(
+                            "Delete", 
+                            key=f"del_user_{user['id']}",
+                            use_container_width=True
+                        ):
+                            try:
+                                db.delete_user(user["id"])
+                                st.success("User deleted!")
+                                st.experimental_rerun()
+                            except ValueError as e:
+                                st.error(str(e))
     else:
         st.info("No users added yet.")
     

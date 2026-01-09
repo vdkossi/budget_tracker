@@ -1,0 +1,31 @@
+# Database files - contain personal financial data
+*.db
+
+# Backup files - contain copies of personal financial data
+backups/
+*.db.backup
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment variables (if you add any later)
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit cache
+.streamlit/
