@@ -211,10 +211,42 @@ if not st.session_state.authenticated:
         except:
             st.write("Could not access secrets")
     
-    password = st.text_input("Enter password", type="password", key="login_password")
+    # Automation markers - hidden divs for test identification
+    st.markdown(
+        '<div data-testid="login-form" data-automation="login-page" style="display: none;"></div>',
+        unsafe_allow_html=True
+    )
     
-    # Debug info (only show if password is configured but login fails)
-    if st.button("Login", use_container_width=True):
+    # Password input with automation-friendly key
+    # Streamlit creates element ID from key: input with key "login_password" becomes accessible
+    password = st.text_input(
+        "Enter password", 
+        type="password", 
+        key="login_password",  # Automation: use key "login_password" or selector '[data-testid="stTextInput"]'
+        help="Enter your password to access the budget tracker"
+    )
+    
+    # Add marker for password field
+    st.markdown(
+        '<div data-automation="password-field" data-field-key="login_password" style="display: none;"></div>',
+        unsafe_allow_html=True
+    )
+    
+    # Login button with automation-friendly key
+    login_button = st.button(
+        "Login", 
+        use_container_width=True,
+        key="login_button",  # Automation: use key "login_button" or button text "Login"
+        help="Click to login with your password"
+    )
+    
+    # Add marker for login button
+    st.markdown(
+        '<div data-automation="login-button" data-button-key="login_button" style="display: none;"></div>',
+        unsafe_allow_html=True
+    )
+    
+    if login_button:
         if password == APP_PASSWORD:
             st.session_state.authenticated = True
             rerun_app()
