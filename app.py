@@ -112,6 +112,22 @@ initialize_app()
 
 
 # =============================================================================
+# HELPER: Rerun function (compatible with all Streamlit versions)
+# =============================================================================
+def rerun_app():
+    """Rerun the app - compatible with both old and new Streamlit versions."""
+    # Try new API first (Streamlit >= 1.27.0)
+    if hasattr(st, 'rerun'):
+        st.rerun()
+    # Fall back to experimental API (older Streamlit versions)
+    elif hasattr(st, 'experimental_rerun'):
+        st.experimental_rerun()
+    else:
+        # Last resort: raise an error with helpful message
+        raise RuntimeError("Streamlit rerun function not available. Please update Streamlit.")
+
+
+# =============================================================================
 # SIMPLE AUTHENTICATION
 # =============================================================================
 # Simple password-based authentication
@@ -201,7 +217,7 @@ if not st.session_state.authenticated:
     if st.button("Login", use_container_width=True):
         if password == APP_PASSWORD:
             st.session_state.authenticated = True
-            st.experimental_rerun()
+            rerun_app()
         else:
             st.error("❌ Incorrect password. Please try again.")
             # Debug: Show what we're comparing (only in development - remove in production)
@@ -260,7 +276,7 @@ with st.sidebar:
     # Logout button
     if st.button("🚪 Logout", use_container_width=True):
         st.session_state.authenticated = False
-        st.experimental_rerun()
+        rerun_app()
     
     # Quick user selector (always visible)
     users = db.get_all_users()
@@ -917,7 +933,7 @@ def show_add_expense():
                                 transaction_date=new_date.isoformat()
                             )
                             st.success("✅ Expense updated!")
-                            st.experimental_rerun()
+                            rerun_app()
                 
                 with col2:
                     st.markdown("#### 🗑️ Delete")
@@ -925,7 +941,7 @@ def show_add_expense():
                     if st.button(f"Delete this expense", key=f"del_expense_{t['id']}"):
                         db.delete_transaction(t['id'])
                         st.success("✅ Expense deleted!")
-                        st.experimental_rerun()
+                        rerun_app()
     else:
         st.info("No expenses recorded yet. Add your first expense above!")
 
@@ -1099,7 +1115,7 @@ def show_add_income():
                                 transaction_date=new_date.isoformat()
                             )
                             st.success("✅ Income updated!")
-                            st.experimental_rerun()
+                            rerun_app()
                 
                 with col2:
                     st.markdown("#### 🗑️ Delete")
@@ -1107,7 +1123,7 @@ def show_add_income():
                     if st.button(f"Delete this income", key=f"del_income_{t['id']}"):
                         db.delete_transaction(t['id'])
                         st.success("✅ Income deleted!")
-                        st.experimental_rerun()
+                        rerun_app()
     else:
         st.info("No income recorded yet. Add your first income above!")
 
@@ -1163,7 +1179,7 @@ def show_savings():
                                 new_amount = goal["current_amount"] + contrib
                                 db.update_savings_goal_amount(goal["id"], new_amount)
                                 st.success("Contribution added!")
-                                st.experimental_rerun()
+                                rerun_app()
                 
                 with action_col2:
                     with st.expander("🗑️ Delete this goal"):
@@ -1171,7 +1187,7 @@ def show_savings():
                         if st.button(f"Yes, delete", key=f"del_goal_{goal['id']}"):
                             db.delete_savings_goal(goal["id"])
                             st.success("Goal deleted!")
-                            st.experimental_rerun()
+                            rerun_app()
                 
                 st.markdown("---")
         else:
@@ -1190,7 +1206,7 @@ def show_savings():
                     target_date=target_date.isoformat() if target_date else None
                 )
                 st.success(f"✅ Goal '{name}' created!")
-                st.experimental_rerun()
+                rerun_app()
 
 
 # =============================================================================
@@ -1257,7 +1273,7 @@ def show_debt():
                                 new_balance = max(0, debt["current_balance"] - payment)
                                 db.update_debt_balance(debt["id"], new_balance)
                                 st.success("Payment recorded!")
-                                st.experimental_rerun()
+                                rerun_app()
                 
                 with action_col2:
                     with st.expander("🗑️ Delete this debt"):
@@ -1265,7 +1281,7 @@ def show_debt():
                         if st.button(f"Yes, delete", key=f"del_debt_{debt['id']}"):
                             db.delete_debt(debt["id"])
                             st.success("Debt deleted!")
-                            st.experimental_rerun()
+                            rerun_app()
                 
                 st.markdown("---")
         else:
@@ -1300,7 +1316,7 @@ def show_debt():
                     due_date=due_day
                 )
                 st.success(f"✅ Debt '{name}' added!")
-                st.experimental_rerun()
+                rerun_app()
 
 
 # =============================================================================
@@ -1451,7 +1467,7 @@ def show_reports():
                             transaction_date=new_date.isoformat()
                         )
                         st.success("Transaction updated!")
-                        st.experimental_rerun()
+                        rerun_app()
             
             with col2:
                 st.markdown("#### 🗑️ Delete Transaction")
@@ -1459,7 +1475,7 @@ def show_reports():
                 if st.button(f"Delete this transaction", key=f"del_trans_{t['id']}"):
                     db.delete_transaction(t['id'])
                     st.success("Transaction deleted!")
-                    st.experimental_rerun()
+                    rerun_app()
 
 
 # =============================================================================
@@ -1506,7 +1522,7 @@ def show_settings():
                             try:
                                 db.delete_user(user["id"])
                                 st.success("User deleted!")
-                                st.experimental_rerun()
+                                rerun_app()
                             except ValueError as e:
                                 st.error(str(e))
     else:
@@ -1527,7 +1543,7 @@ def show_settings():
                 try:
                     db.add_user(new_user_name.strip())
                     st.success(f"✅ User '{new_user_name}' added!")
-                    st.experimental_rerun()
+                    rerun_app()
                 except Exception as e:
                     st.error(f"Could not add user: {e}")
             else:
@@ -1558,7 +1574,7 @@ def show_settings():
             backup_path = db.create_backup()
             if backup_path:
                 st.success(f"✅ Backup created!")
-                st.experimental_rerun()
+                rerun_app()
             else:
                 st.warning("No database to backup yet.")
     
@@ -1592,7 +1608,7 @@ def show_settings():
                         try:
                             db.restore_from_backup(backup['path'])
                             st.success("Database restored! Refresh the page.")
-                            st.experimental_rerun()
+                            rerun_app()
                         except Exception as e:
                             st.error(f"Error: {e}")
     else:
