@@ -114,10 +114,28 @@ initialize_app()
 # =============================================================================
 # SIMPLE AUTHENTICATION
 # =============================================================================
-# Simple password-based authentication using environment variable
-# Set APP_PASSWORD environment variable to your desired password
+# Simple password-based authentication
+# For deployment (Streamlit Cloud): Set in Streamlit secrets (see .streamlit/secrets.toml.example)
+# For local: Set APP_PASSWORD environment variable
 
-APP_PASSWORD = os.getenv("APP_PASSWORD", "budget2024")  # Default password if env var not set
+def get_app_password():
+    """Get password from Streamlit secrets (deployment) or environment variable (local)."""
+    # Try Streamlit secrets first (for Streamlit Cloud deployment)
+    try:
+        if hasattr(st, 'secrets') and 'password' in st.secrets:
+            return st.secrets['password']
+    except:
+        pass
+    
+    # Fall back to environment variable (for local development)
+    env_password = os.getenv("APP_PASSWORD")
+    if env_password:
+        return env_password
+    
+    # No password configured - return None
+    return None
+
+APP_PASSWORD = get_app_password()
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -126,6 +144,23 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     st.title("🔒 Budget Tracker Login")
     st.markdown("---")
+    
+    # Check if password is configured
+    if APP_PASSWORD is None:
+        st.error("""
+        ⚠️ **Password not configured!**
+        
+        Please set a password using one of these methods:
+        
+        **For Streamlit Cloud deployment:**
+        - Go to your app settings → Secrets
+        - Add: `password = "your-password"`
+        
+        **For local development:**
+        - Set environment variable: `export APP_PASSWORD="your-password"`
+        - Or create `.streamlit/secrets.toml` with: `password = "your-password"`
+        """)
+        st.stop()
     
     password = st.text_input("Enter password", type="password", key="login_password")
     
@@ -137,7 +172,7 @@ if not st.session_state.authenticated:
             st.error("❌ Incorrect password. Please try again.")
     
     st.markdown("---")
-    st.caption("💡 Set APP_PASSWORD environment variable to customize the password")
+    st.caption("💡 For deployment: Set password in Streamlit secrets. For local: Set APP_PASSWORD environment variable")
     st.stop()  # Stop execution here - don't show the app until authenticated
 
 
