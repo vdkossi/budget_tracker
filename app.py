@@ -26,6 +26,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
+import os
 
 # Import our database functions
 import database as db
@@ -111,6 +112,36 @@ initialize_app()
 
 
 # =============================================================================
+# SIMPLE AUTHENTICATION
+# =============================================================================
+# Simple password-based authentication using environment variable
+# Set APP_PASSWORD environment variable to your desired password
+
+APP_PASSWORD = os.getenv("APP_PASSWORD", "budget2024")  # Default password if env var not set
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# Show login form if not authenticated
+if not st.session_state.authenticated:
+    st.title("🔒 Budget Tracker Login")
+    st.markdown("---")
+    
+    password = st.text_input("Enter password", type="password", key="login_password")
+    
+    if st.button("Login", use_container_width=True):
+        if password == APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.experimental_rerun()
+        else:
+            st.error("❌ Incorrect password. Please try again.")
+    
+    st.markdown("---")
+    st.caption("💡 Set APP_PASSWORD environment variable to customize the password")
+    st.stop()  # Stop execution here - don't show the app until authenticated
+
+
+# =============================================================================
 # SESSION STATE SETUP
 # =============================================================================
 # STREAMLIT CONCEPT: Session State
@@ -153,6 +184,11 @@ with st.sidebar:
         st.session_state.current_page = "Settings"
     
     st.markdown("---")
+    
+    # Logout button
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state.authenticated = False
+        st.experimental_rerun()
     
     # Quick user selector (always visible)
     users = db.get_all_users()
