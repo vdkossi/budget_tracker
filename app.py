@@ -122,15 +122,27 @@ def get_app_password():
     """Get password from Streamlit secrets (deployment) or environment variable (local)."""
     # Try Streamlit secrets first (for Streamlit Cloud deployment)
     try:
-        if hasattr(st, 'secrets') and 'password' in st.secrets:
-            return st.secrets['password']
-    except:
+        if hasattr(st, 'secrets'):
+            # Try different access methods
+            if hasattr(st.secrets, 'get'):
+                # Access as dictionary
+                pwd = st.secrets.get('password')
+                if pwd:
+                    return str(pwd).strip()  # Ensure it's a string and strip whitespace
+            # Try direct attribute access
+            if hasattr(st.secrets, 'password'):
+                return str(st.secrets.password).strip()
+            # Try dictionary-style access
+            if 'password' in st.secrets:
+                return str(st.secrets['password']).strip()
+    except Exception as e:
+        # Silently continue to try other methods
         pass
     
     # Fall back to environment variable (for local development)
     env_password = os.getenv("APP_PASSWORD")
     if env_password:
-        return env_password
+        return str(env_password).strip()
     
     # No password configured - return None
     return None
@@ -153,8 +165,15 @@ if not st.session_state.authenticated:
         Please set a password using one of these methods:
         
         **For Streamlit Cloud deployment:**
-        - Go to your app settings → Secrets
-        - Add: `password = "your-password"`
+        1. Go to https://share.streamlit.io/
+        2. Click on your app
+        3. Click the "⋮" (three dots) menu in the top right
+        4. Select "Settings" → "Secrets"
+        5. In the secrets editor, add:
+           ```toml
+           password = "your-secure-password-here"
+           ```
+        6. Click "Save" and wait for the app to redeploy
         
         **For local development:**
         - Set environment variable: `export APP_PASSWORD="your-password"`
@@ -162,14 +181,32 @@ if not st.session_state.authenticated:
         """)
         st.stop()
     
+    # Debug: Show if password was found (remove this after debugging)
+    with st.expander("🔍 Debug Info (remove after testing)"):
+        st.write(f"Password configured: {APP_PASSWORD is not None}")
+        if APP_PASSWORD:
+            st.write(f"Password length: {len(APP_PASSWORD)}")
+            st.write(f"First char: {APP_PASSWORD[0] if len(APP_PASSWORD) > 0 else 'N/A'}")
+            st.write(f"Last char: {APP_PASSWORD[-1] if len(APP_PASSWORD) > 0 else 'N/A'}")
+        # Try to show what secrets are available
+        try:
+            if hasattr(st, 'secrets'):
+                st.write("Available secrets keys:", list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else "N/A")
+        except:
+            st.write("Could not access secrets")
+    
     password = st.text_input("Enter password", type="password", key="login_password")
     
+    # Debug info (only show if password is configured but login fails)
     if st.button("Login", use_container_width=True):
         if password == APP_PASSWORD:
             st.session_state.authenticated = True
             st.experimental_rerun()
         else:
             st.error("❌ Incorrect password. Please try again.")
+            # Debug: Show what we're comparing (only in development - remove in production)
+            # Uncomment the line below for debugging:
+            # st.caption(f"Debug: Expected password length: {len(APP_PASSWORD) if APP_PASSWORD else 0}, Entered length: {len(password)}")
     
     st.markdown("---")
     st.caption("💡 For deployment: Set password in Streamlit secrets. For local: Set APP_PASSWORD environment variable")
